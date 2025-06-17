@@ -31,6 +31,94 @@ interface UseGameWorkerReturn {
   workerSupported: boolean;
 }
 
+interface WorkerMessageHandlers {
+  setIsCalculating: (calculating: boolean) => void;
+  setError: (error: WorkerError | null) => void;
+  setLastPerformance: (performance: WorkerPerformance) => void;
+  pendingResolveRef: React.MutableRefObject<((grid: Grid) => void) | null>;
+  pendingRejectRef: React.MutableRefObject<((error: Error) => void) | null>;
+}
+
+const handleWorkerMessage = (e: MessageEvent, handlers: WorkerMessageHandlers) => {
+  const { type, data } = e.data;
+  const { setIsCalculating, setError, setLastPerformance, pendingResolveRef, pendingRejectRef } =
+    handlers;
+
+  switch (type) {
+    case 'result':
+      try {
+        const resultData = data as WorkerResult;
+        const newGrid = Grid.deserialize(resultData.grid);
+
+        setIsCalculating(false);
+        setError(null);
+
+        if (pendingResolveRef.current) {
+          pendingResolveRef.current(newGrid);
+          pendingResolveRef.current = null;
+          pendingRejectRef.current = null;
+        }
+      } catch (deserializeError) {
+        setError({
+          message: 'Failed to deserialize worker result',
+          stack: deserializeError instanceof Error ? deserializeError.stack : undefined,
+        });
+        setIsCalculating(false);
+
+        if (pendingRejectRef.current) {
+          pendingRejectRef.current(new Error('Deserialization failed'));
+          pendingResolveRef.current = null;
+          pendingRejectRef.current = null;
+        }
+      }
+      break;
+
+    case 'performance': {
+      const perfData = data as WorkerPerformance;
+      setLastPerformance(perfData);
+      break;
+    }
+
+    case 'error': {
+      const errorData = data as WorkerError;
+      setError(errorData);
+      setIsCalculating(false);
+
+      if (pendingRejectRef.current) {
+        pendingRejectRef.current(new Error(errorData.message));
+        pendingResolveRef.current = null;
+        pendingRejectRef.current = null;
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+};
+
+const handleWorkerError = (
+  error: ErrorEvent,
+  handlers: Pick<
+    WorkerMessageHandlers,
+    'setError' | 'setIsCalculating' | 'pendingResolveRef' | 'pendingRejectRef'
+  >
+) => {
+  const { setError, setIsCalculating, pendingResolveRef, pendingRejectRef } = handlers;
+
+  setError({
+    message: 'Worker error',
+    stack: error.error?.stack,
+  });
+  setIsCalculating(false);
+
+  if (pendingRejectRef.current) {
+    pendingRejectRef.current(new Error('Worker error'));
+    pendingResolveRef.current = null;
+    pendingRejectRef.current = null;
+  }
+};
+
 export const useGameWorker = (): UseGameWorkerReturn => {
   const workerRef = useRef<Worker | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
@@ -48,78 +136,19 @@ export const useGameWorker = (): UseGameWorkerReturn => {
       const worker = new GameWorker();
       workerRef.current = worker;
 
-      // Handle worker messages
-      worker.onmessage = (e) => {
-        const { type, data } = e.data;
-
-        switch (type) {
-          case 'result':
-            try {
-              const resultData = data as WorkerResult;
-              const newGrid = Grid.deserialize(resultData.grid);
-
-              setIsCalculating(false);
-              setError(null);
-
-              if (pendingResolveRef.current) {
-                pendingResolveRef.current(newGrid);
-                pendingResolveRef.current = null;
-                pendingRejectRef.current = null;
-              }
-            } catch (deserializeError) {
-              setError({
-                message: 'Failed to deserialize worker result',
-                stack: deserializeError instanceof Error ? deserializeError.stack : undefined,
-              });
-              setIsCalculating(false);
-
-              if (pendingRejectRef.current) {
-                pendingRejectRef.current(new Error('Deserialization failed'));
-                pendingResolveRef.current = null;
-                pendingRejectRef.current = null;
-              }
-            }
-            break;
-
-          case 'performance': {
-            const perfData = data as WorkerPerformance;
-            setLastPerformance(perfData);
-
-            break;
-          }
-
-          case 'error': {
-            const errorData = data as WorkerError;
-
-            setError(errorData);
-            setIsCalculating(false);
-
-            if (pendingRejectRef.current) {
-              pendingRejectRef.current(new Error(errorData.message));
-              pendingResolveRef.current = null;
-              pendingRejectRef.current = null;
-            }
-            break;
-          }
-
-          default:
-        }
+      const messageHandlers: WorkerMessageHandlers = {
+        setIsCalculating,
+        setError,
+        setLastPerformance,
+        pendingResolveRef,
+        pendingRejectRef,
       };
+
+      // Handle worker messages
+      worker.onmessage = (e) => handleWorkerMessage(e, messageHandlers);
 
       // Handle worker errors
-      worker.onerror = (error) => {
-        setError({
-          message: 'Worker error',
-          stack: error.error?.stack,
-        });
-        setIsCalculating(false);
-
-        if (pendingRejectRef.current) {
-          pendingRejectRef.current(new Error('Worker error'));
-          pendingResolveRef.current = null;
-          pendingRejectRef.current = null;
-        }
-      };
+      worker.onerror = (error) => handleWorkerError(error, messageHandlers);
     } catch (initError) {
       setError({
         message: 'Failed to initialize worker',
