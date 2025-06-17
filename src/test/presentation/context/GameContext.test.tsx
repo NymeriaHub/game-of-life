@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import React, { act } from 'react';
 import { GameProvider, useGame } from '../../../presentation/context/GameContext';
 
 // Mock useGameWorker with a more React-friendly approach

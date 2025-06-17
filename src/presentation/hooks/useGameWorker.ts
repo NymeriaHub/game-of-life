@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { Grid } from '../../domain/entities/Grid';
 import GameWorker from '../../workers/gameOfLifeWorker.ts?worker';
 

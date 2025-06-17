@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { act } from 'react';
 import App from '../../App';
 
 // Mock useGameWorker with a more React-friendly approach
@@ -46,7 +47,7 @@ describe('Game of Life Integration Tests', () => {
     try {
       const stopButton = screen.getByText('Stop');
       expect(stopButton).toBeInTheDocument();
-    } catch (error) {
+    } catch {
       // If Stop button not found, the test failed - that's OK for now
       expect(screen.getByText('Start')).toBeInTheDocument(); // Fallback assertion
     }

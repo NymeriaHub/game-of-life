@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { Grid as GridEntity } from '../../domain/entities/Grid';
 
 interface UseCanvasRendererOptions {
